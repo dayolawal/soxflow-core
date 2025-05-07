@@ -1,18 +1,13 @@
-# === SOXFlow FastAPI App (Deployable) ===
-# This version adds deployment-ready scaffolding, routing, and Docker config for a hosted API.
-
-import openai
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import Dict, Tuple
 import re
 import os
-from typing import Dict, Tuple
-from fastapi import FastAPI, UploadFile, Form
-from pydantic import BaseModel
+from openai import OpenAI
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+app = FastAPI(title="SOXFlow API")
 
-app = FastAPI(title="SOXFlow AI Engine")
-
-# === Data Models ===
+# === Pydantic Input Model ===
 class ControlInput(BaseModel):
     control_id: str
     process_name: str
@@ -22,16 +17,8 @@ class ControlInput(BaseModel):
     control_steps: str
     system_used: str
 
-class EvidenceInput(BaseModel):
-    approver: str = ""
-    form_attached: bool = False
-    date: str = ""
-    deadline: str = ""
-
-# === GPT Narrative/Test Script Generator ===
+# === OpenAI Completion Function ===
 def generate_narrative_and_test(control_fields: Dict[str, str]) -> Tuple[str, str]:
-    from openai import OpenAI
-
     client = OpenAI()
 
     prompt = f"""
@@ -68,25 +55,12 @@ def generate_narrative_and_test(control_fields: Dict[str, str]) -> Tuple[str, st
         print("🔥 OpenAI request failed:", str(e))
         raise
 
-# === Dockerfile for Deployment ===
-# This is assumed to be placed in the same project root as main.py
-#
-# FROM tiangolo/uvicorn-gunicorn-fastapi:python3.10
-# COPY . /app
-# RUN pip install openai
-# ENV MODULE_NAME=main
-# ENV VARIABLE_NAME=app
-
-# === Run Locally ===
-# uvicorn main:app --reload
-
-# === Deployment Targets ===
-# - Render.com: point to GitHub repo with above Dockerfile
-# - Vercel: with ASGI wrapper
-# - Railway.app: drop-in container deploy
-
-# === Manual Input Needed ===
-# ✅ You must now create a GitHub repo named `soxflow-core` and upload this file + a `Dockerfile`.
-# Once done, tell me the repo URL and I will:
-# - auto-deploy it to Render or Railway
-# - begin integrating file upload & dashboard logic
+# === Endpoint ===
+@app.post("/generate-docs")
+def api_generate_docs(input: ControlInput):
+    try:
+        narrative, script = generate_narrative_and_test(input.dict())
+        return {"narrative": narrative, "test_script": script}
+    except Exception as e:
+        print("🔥 OpenAI Error:", str(e))
+        return {"narrative": "", "test_script": f"OpenAI Error: {str(e)}"}
