@@ -30,20 +30,30 @@ class EvidenceInput(BaseModel):
 
 # === GPT Narrative/Test Script Generator ===
 def generate_narrative_and_test(control_fields: Dict[str, str]) -> Tuple[str, str]:
+    from openai import OpenAI
+
+    client = OpenAI()
+
     prompt = f"""
     You are a SOX compliance and IT audit expert. Respond in two clearly labeled sections:
 
     Narrative:
-    Provide a detailed control narrative...
+    Provide a detailed control narrative that explains the control’s objective, frequency, scope, and how it operates in business terms.
 
     Test Script:
-    Write an audit-ready test script...
+    Write an audit-ready test script using PCAOB standards including population, sample selection, evidence, and expected outcome. Format clearly using step-by-step numbering.
 
     Control ID: {control_fields['control_id']}
-    ...
+    Process Name: {control_fields['process_name']}
+    Control Objective: {control_fields['control_objective']}
+    Risk Category: {control_fields['risk_category']}
+    Frequency: {control_fields['frequency']}
+    Control Steps: {control_fields['control_steps']}
+    System Used: {control_fields['system_used']}
     """
+
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a SOX audit and compliance assistant."},
@@ -51,12 +61,13 @@ def generate_narrative_and_test(control_fields: Dict[str, str]) -> Tuple[str, st
             ],
             temperature=0.3
         )
-        output = response['choices'][0]['message']['content']
-        match = re.search(r"Narrative:\\s*(.*?)\\s*Test Script:\\s*(.*)", output, re.DOTALL)
+        output = response.choices[0].message.content
+        match = re.search(r"Narrative:\s*(.*?)\s*Test Script:\s*(.*)", output, re.DOTALL)
         return (match.group(1).strip(), match.group(2).strip()) if match else ("", "")
     except Exception as e:
         print("🔥 OpenAI request failed:", str(e))
         raise
+
 # === Dockerfile for Deployment ===
 # This is assumed to be placed in the same project root as main.py
 #
