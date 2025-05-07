@@ -34,67 +34,29 @@ def generate_narrative_and_test(control_fields: Dict[str, str]) -> Tuple[str, st
     You are a SOX compliance and IT audit expert. Respond in two clearly labeled sections:
 
     Narrative:
-    Provide a detailed control narrative that explains the control’s objective, frequency, scope, and how it operates in business terms.
+    Provide a detailed control narrative...
 
     Test Script:
-    Write an audit-ready test script using PCAOB standards including population, sample selection, evidence, and expected outcome. Format clearly using step-by-step numbering.
+    Write an audit-ready test script...
 
     Control ID: {control_fields['control_id']}
-    Process Name: {control_fields['process_name']}
-    Control Objective: {control_fields['control_objective']}
-    Risk Category: {control_fields['risk_category']}
-    Frequency: {control_fields['frequency']}
-    Control Steps: {control_fields['control_steps']}
-    System Used: {control_fields['system_used']}
+    ...
     """
-
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "You are a SOX audit and compliance assistant."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.3
-    )
-
-    output = response['choices'][0]['message']['content']
-    match = re.search(r"Narrative:\s*(.*?)\s*Test Script:\s*(.*)", output, re.DOTALL)
-    return (match.group(1).strip(), match.group(2).strip()) if match else ("", "")
-
-# === Evidence Evaluation ===
-def analyze_evidence(evidence: Dict[str, str], expected: Dict[str, str]) -> Dict[str, str]:
-    issues = []
-    if not evidence.get("approver"):
-        issues.append("Missing approver")
-    if not evidence.get("form_attached"):
-        issues.append("Missing vendor request form")
-    if evidence.get("date") and evidence['date'] > expected['deadline']:
-        issues.append("Timing issue: evidence submitted late")
-
-    passed = len(issues) == 0
-    summary = "✅ Evidence supports control." if passed else "❌ Evidence exception: " + ", ".join(issues)
-
-    return {
-        "status": "Pass" if passed else "Exception",
-        "summary": summary,
-        "exception_memo": generate_exception_memo(issues) if not passed else ""
-    }
-
-def generate_exception_memo(issues: list) -> str:
-    return f"Exception Details:\n" + "\n".join(f"- {issue}" for issue in issues)
-
-# === FastAPI Endpoints ===
-@app.post("/generate-docs")
-def api_generate_docs(input: ControlInput):
-    narrative, script = generate_narrative_and_test(input.dict())
-    return {"narrative": narrative, "test_script": script}
-
-@app.post("/analyze-evidence")
-def api_analyze_evidence(evidence: EvidenceInput):
-    expected = {"deadline": evidence.deadline}  # Simulated, later pulled from control metadata
-    result = analyze_evidence(evidence.dict(), expected)
-    return result
-
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a SOX audit and compliance assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3
+        )
+        output = response['choices'][0]['message']['content']
+        match = re.search(r"Narrative:\\s*(.*?)\\s*Test Script:\\s*(.*)", output, re.DOTALL)
+        return (match.group(1).strip(), match.group(2).strip()) if match else ("", "")
+    except Exception as e:
+        print("🔥 OpenAI request failed:", str(e))
+        raise
 # === Dockerfile for Deployment ===
 # This is assumed to be placed in the same project root as main.py
 #
