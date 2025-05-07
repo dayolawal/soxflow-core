@@ -1,0 +1,119 @@
+# === SOXFlow FastAPI App (Deployable) ===
+# This version adds deployment-ready scaffolding, routing, and Docker config for a hosted API.
+
+import openai
+import re
+import os
+from typing import Dict, Tuple
+from fastapi import FastAPI, UploadFile, Form
+from pydantic import BaseModel
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+app = FastAPI(title="SOXFlow AI Engine")
+
+# === Data Models ===
+class ControlInput(BaseModel):
+    control_id: str
+    process_name: str
+    control_objective: str
+    risk_category: str
+    frequency: str
+    control_steps: str
+    system_used: str
+
+class EvidenceInput(BaseModel):
+    approver: str = ""
+    form_attached: bool = False
+    date: str = ""
+    deadline: str = ""
+
+# === GPT Narrative/Test Script Generator ===
+def generate_narrative_and_test(control_fields: Dict[str, str]) -> Tuple[str, str]:
+    prompt = f"""
+    You are a SOX compliance and IT audit expert. Respond in two clearly labeled sections:
+
+    Narrative:
+    Provide a detailed control narrative that explains the control’s objective, frequency, scope, and how it operates in business terms.
+
+    Test Script:
+    Write an audit-ready test script using PCAOB standards including population, sample selection, evidence, and expected outcome. Format clearly using step-by-step numbering.
+
+    Control ID: {control_fields['control_id']}
+    Process Name: {control_fields['process_name']}
+    Control Objective: {control_fields['control_objective']}
+    Risk Category: {control_fields['risk_category']}
+    Frequency: {control_fields['frequency']}
+    Control Steps: {control_fields['control_steps']}
+    System Used: {control_fields['system_used']}
+    """
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are a SOX audit and compliance assistant."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.3
+    )
+
+    output = response['choices'][0]['message']['content']
+    match = re.search(r"Narrative:\s*(.*?)\s*Test Script:\s*(.*)", output, re.DOTALL)
+    return (match.group(1).strip(), match.group(2).strip()) if match else ("", "")
+
+# === Evidence Evaluation ===
+def analyze_evidence(evidence: Dict[str, str], expected: Dict[str, str]) -> Dict[str, str]:
+    issues = []
+    if not evidence.get("approver"):
+        issues.append("Missing approver")
+    if not evidence.get("form_attached"):
+        issues.append("Missing vendor request form")
+    if evidence.get("date") and evidence['date'] > expected['deadline']:
+        issues.append("Timing issue: evidence submitted late")
+
+    passed = len(issues) == 0
+    summary = "✅ Evidence supports control." if passed else "❌ Evidence exception: " + ", ".join(issues)
+
+    return {
+        "status": "Pass" if passed else "Exception",
+        "summary": summary,
+        "exception_memo": generate_exception_memo(issues) if not passed else ""
+    }
+
+def generate_exception_memo(issues: list) -> str:
+    return f"Exception Details:\n" + "\n".join(f"- {issue}" for issue in issues)
+
+# === FastAPI Endpoints ===
+@app.post("/generate-docs")
+def api_generate_docs(input: ControlInput):
+    narrative, script = generate_narrative_and_test(input.dict())
+    return {"narrative": narrative, "test_script": script}
+
+@app.post("/analyze-evidence")
+def api_analyze_evidence(evidence: EvidenceInput):
+    expected = {"deadline": evidence.deadline}  # Simulated, later pulled from control metadata
+    result = analyze_evidence(evidence.dict(), expected)
+    return result
+
+# === Dockerfile for Deployment ===
+# This is assumed to be placed in the same project root as main.py
+#
+# FROM tiangolo/uvicorn-gunicorn-fastapi:python3.10
+# COPY . /app
+# RUN pip install openai
+# ENV MODULE_NAME=main
+# ENV VARIABLE_NAME=app
+
+# === Run Locally ===
+# uvicorn main:app --reload
+
+# === Deployment Targets ===
+# - Render.com: point to GitHub repo with above Dockerfile
+# - Vercel: with ASGI wrapper
+# - Railway.app: drop-in container deploy
+
+# === Manual Input Needed ===
+# ✅ You must now create a GitHub repo named `soxflow-core` and upload this file + a `Dockerfile`.
+# Once done, tell me the repo URL and I will:
+# - auto-deploy it to Render or Railway
+# - begin integrating file upload & dashboard logic
