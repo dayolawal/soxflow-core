@@ -64,3 +64,33 @@ def api_generate_docs(input: ControlInput):
     except Exception as e:
         print("🔥 OpenAI Error:", str(e))
         return {"narrative": "", "test_script": f"OpenAI Error: {str(e)}"}
+
+# === Evidence Input Model ===
+class EvidenceInput(BaseModel):
+    approver: str
+    form_attached: bool
+    date: str
+    deadline: str
+
+# === New Endpoint for Evidence Analysis ===
+@app.post("/analyze-evidence")
+def analyze_evidence(evidence: EvidenceInput):
+    issues = []
+
+    if not evidence.approver:
+        issues.append("Missing approver")
+    if not evidence.form_attached:
+        issues.append("Missing form")
+    if evidence.date > evidence.deadline:
+        issues.append("Timing issue: evidence submitted late")
+
+    status = "Pass" if not issues else "Exception"
+    summary = "✅ Evidence supports control." if not issues else f"❌ Evidence exception: {', '.join(issues)}"
+    memo = "\n".join(f"- {issue}" for issue in issues) if issues else ""
+
+    return {
+        "status": status,
+        "summary": summary,
+        "exception_memo": memo
+    }
+
